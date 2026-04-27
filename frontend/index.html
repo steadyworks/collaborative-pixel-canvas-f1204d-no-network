@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Collaborative Pixel Canvas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f0f0f0; padding: 16px; }
+
+    #header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 14px; font-size: 14px;
+    }
+    #header h1 { font-size: 16px; color: #333; }
+    #user-identifier { font-weight: bold; color: #555; font-size: 13px; }
+
+    #main { display: flex; gap: 20px; align-items: flex-start; }
+
+    #canvas-con<<<<<<ixelState[key] = serverInfo;
+          if (!isTimelapse) pixelState[key] = serverInfo;
+        }
+      } catch (err) {
+        console.error('place pixel failed:', err);
+      }
+    });
+
+    // ---------------------------------------------------------------------------
+    // Tooltip
+    // ---------------------------------------------------------------------------
+    function formatRelativeTime(isoString) {
+      try {
+        const date = new Date(isoString);
+        const diffMs = Date.now() - date.getTime();
+        const diffSec = Math.floor(diffMs / 1000);
+        if (diffSec < 5) return 'just now';
+        if (diffSec < 60) return `${diffSec} seconds ago`;
+        if (diffSec < 3600) return `${Math.floor(diffSec / 60)} minutes ago`;
+        if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} hours ago`;
+        return date.toLocaleString();
+      } catch {
+        return isoString || '';
+      }
+    }
+
+    canvasGrid.addEventListener('mouseover', (e) => {
+      const cell = e.target.closest('.pixel');
+      if (!cell) { tooltipEl.style.display = 'none'; return; }
+
+      const x = cell.dataset.x;
+      const y = cell.dataset.y;
+      const data = pixelState[`${x},${y}`];
+
+      if (!data) { tooltipEl.style.display = 'none'; return; }
+
+      tooltipUserEl.textContent = data.placer;
+      tooltipTsEl.textContent = formatRelativeTime(data.placed_at);
+
+      const rect = cell.getBoundingClientRect();
+      tooltipEl.style.left = (rect.right + 6) + 'px';
+      tooltipEl.style.top = rect.top + 'px';
+      tooltipEl.style.display = 'block';
+    });
+
+    canvasGrid.addEventListener('mouseleave', () => {
+      tooltipEl.style.display = 'none';
+    });
+
+    // ---------------------------------------------------------------------------
+    // Timelapse
+    // ---------------------------------------------------------------------------
+    timelapseBtnEl.addEventListener('click', () => {
+      if (!isTimelapse) startTimelapse();
+    });
+
+    timelapseStopEl.addEventListener('click', stopTimelapse);
+
+    async function startTimelapse() {
+      isTimelapse = true;
+      timelapseAborted = false;
+
+      // Show stop immediately (before async fetch so test can see it)
+      timelapseStopEl.style.display = 'block';
+
+      // Clear canvas immediately
+      clearDisplay();
+
+      // Fetch history
+      let history;
+      try {
+        const resp = await fetch(`${API_BASE}/api/history`);
+        history = await resp.json();
+      } catch (err) {
+        console.error('fetch history failed:', err);
+        stopTimelapse();
+        return;
+      }
+
+      if (timelapseAborted) return;
+
+      // Replay history in order
+      let i = 0;
+      function applyNextStep() {
+        if (timelapseAborted) return;
+        if (i >= history.length) {
+          if (!timelapseAborted) stopTimelapse();
+          return;
+        }
+        const entry = history[i++];
+        const key = `${entry.x},${entry.y}`;
+        pixelState[key] = { color: entry.color, placer: entry.placer, placed_at: entry.placed_at };
+        renderPixel(entry.x, entry.y, entry.color);
+        setTimeout(applyNextStep, 100);
+      }
+      applyNextStep();
+    }
+
+    function stopTimelapse() {
+      timelapseAborted = true;
+      isTimelapse = false;
+
+      timelapseStopEl.style.display = 'none';
+
+      // Restore live state
+      Object.values(pixelCells).forEach(c => { c.style.backgroundColor = '#FFFFFF'; });
+      pixelState = {};
+      for (const [key, info] of Object.entries(livePixelState)) {
+        pixelState[key] = info;
+        const [x, y] = key.split(',').map(Number);
+        renderPixel(x, y, info.color);
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Init
+    // ---------------------------------------------------------------------------
+    async function init() {
+      initUsername();
+      initGrid();
+      initPalette();
+      connectWS();
+      await loadCanvas();
+    }
+
+    init();
+  </script>
+</body>
+</html>
